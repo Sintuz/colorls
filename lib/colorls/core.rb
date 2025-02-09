@@ -417,6 +417,8 @@ module ColorLS
     def options(content)
       if content.directory?
         options_directory(content).values_at(:key, :color, :group)
+      elsif content.symlink?
+        options_symlink(content).values_at(:key, :color, :group)
       else
         options_file(content).values_at(:key, :color, :group)
       end
@@ -432,9 +434,26 @@ module ColorLS
       {key: key, color: color, group: :folders}
     end
 
+    def options_symlink(content)
+      group = if !content.link_target.nil? &&
+                 !content.parent.nil? &&
+                 File.stat(File.absolute_path(content.link_target, content.parent)).directory?
+                :folders
+              else
+                :recognized_files
+              end
+      {key: :symlink, color: @colors[:link], group: group}
+    end
+
     def options_file(content)
-      key = File.extname(content.name).delete_prefix('.').downcase.to_sym
-      key = @file_aliases[key] unless @files.key?(key)
+      # key = File.extname(content.name).delete_prefix('.').downcase.to_sym
+      key = if @file_aliases.key?(content.name.downcase.to_sym)
+              @file_aliases[content.name.downcase.to_sym]
+            elsif @files.key?(content.name.downcase.to_sym)
+              content.name.downcase.to_sym
+            else
+              key_from_extension(content.name)
+            end
 
       color = file_color(content, key)
       group = @files.key?(key) ? :recognized_files : :unrecognized_files
@@ -442,6 +461,14 @@ module ColorLS
       key = :file if key.nil?
 
       {key: key, color: color, group: group}
+    end
+
+    def key_from_extension(name)
+      extension = File.extname(name).delete_prefix('.')
+      key = extension.empty? ? name.delete_prefix('.') : extension
+      key = key.downcase.to_sym
+      key = @file_aliases[key] unless @files.key?(key)
+      key
     end
 
     def tree_contents(path)
